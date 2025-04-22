@@ -1,6 +1,5 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Extensions.Dapr;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
@@ -15,17 +14,26 @@ namespace SET_Vinsight.ProxyProcessor
             _logger = logger;
         }
 
-        [Function("process-lock")]
-        public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req)
+        [Function("ProcessLock")]
+        public Task ProcessLockAsync(
+            [DaprTopicTrigger("servicebus-pubsub", Topic = "locks")]
+            byte[] messagePayload) 
         {
-            _logger.LogInformation("ProcessLock received a request");
-
-            return new OkObjectResult(new
+            try
             {
-                receivedMessage = "message",
-                response = $"ProcessLock processed your message!",
-                timestamp = DateTime.UtcNow
-            });
+                var json = System.Text.Encoding.UTF8.GetString(messagePayload);
+                dynamic evt = JsonConvert.DeserializeObject(json);
+                string operation = evt.operation ?? "unknown";
+                string dataValue = evt.data ?? "<no data>";
+                _logger.LogInformation($"Operation: {operation}, Data: {dataValue}");
+                _logger.LogInformation($"Timestamp UTC: {DateTime.UtcNow:O}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error on processing event 'locks': {ex.Message}");
+            }
+
+            return Task.CompletedTask;
         }
     }
 }
